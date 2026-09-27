@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import Admin from "./admin/Admin.jsx";
 
 const DEFAULT_SETTINGS = {
   announcement: "ELEGANCE, REIMAGINED",
@@ -14,95 +15,170 @@ const DEFAULT_SETTINGS = {
   address: "Pakistan",
   instagram: "Instagram",
   facebook: "Facebook",
-  tiktok: "TikTok"
+  tiktok: "TikTok",
+  whatsapp: ""
 };
-
-const STORAGE_PRODUCTS = "rzia_aura_products";
-const STORAGE_COLLECTIONS = "rzia_aura_collections";
-const STORAGE_SETTINGS = "rzia_aura_settings";
 
 function money(value, currency) {
   const n = Number(value || 0);
 
-  if (currency === "BDT") {
-    return `৳${n.toLocaleString()}`;
-  }
-
-  if (currency === "EUR") {
-    return `€${n.toLocaleString()}`;
-  }
+  if (currency === "BDT") return `৳${n.toLocaleString()}`;
+  if (currency === "EUR") return `€${n.toLocaleString()}`;
 
   return `Rs. ${n.toLocaleString()}`;
 }
 
-function readStorage(key, fallback) {
+function getPrice(product, currency) {
+  if (currency === "PKR") {
+    return Number(
+      product.pricePKR ??
+        product.price_pkr ??
+        product.pricePkr ??
+        0
+    );
+  }
+
+  if (currency === "BDT") {
+    return Number(
+      product.priceBDT ??
+        product.price_bdt ??
+        product.priceBdt ??
+        0
+    );
+  }
+
+  return Number(
+    product.priceEUR ??
+      product.price_eur ??
+      product.priceEur ??
+      0
+  );
+}
+
+function getSizes(product) {
+  if (Array.isArray(product.sizes)) return product.sizes;
+
+  if (typeof product.sizes === "string") {
+    return product.sizes
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function getColours(product) {
+  if (Array.isArray(product.colours)) return product.colours;
+
+  if (typeof product.colours === "string") {
+    return product.colours
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function isNewArrival(product) {
+  return Boolean(
+    product.newArrival ??
+      product.new_arrival ??
+      false
+  );
+}
+
+async function getProducts() {
   try {
-    const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) : fallback;
-  } catch {
-    return fallback;
+    const response = await fetch(
+      "/.netlify/functions/products",
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Products API failed");
+    }
+
+    const data = await response.json();
+
+    return Array.isArray(data)
+      ? data
+      : data.products || [];
+  } catch (error) {
+    console.error("Products loading error:", error);
+    return [];
   }
 }
 
 function App() {
-  const [products, setProducts] = useState(() =>
-    readStorage(STORAGE_PRODUCTS, [])
-  );
-
-  const [collections, setCollections] = useState(() =>
-    readStorage(STORAGE_COLLECTIONS, [])
-  );
-
-  const [settings, setSettings] = useState(() =>
-    readStorage(STORAGE_SETTINGS, DEFAULT_SETTINGS)
-  );
+  const [products, setProducts] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [settings] = useState(DEFAULT_SETTINGS);
 
   const [currency, setCurrency] = useState("PKR");
   const [cart, setCart] = useState([]);
   const [page, setPage] = useState("home");
   const [selected, setSelected] = useState(null);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  async function loadProducts() {
+    setLoading(true);
+
+    const data = await getProducts();
+
+    setProducts(data);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_PRODUCTS, JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_COLLECTIONS, JSON.stringify(collections));
-  }, [collections]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(settings));
-  }, [settings]);
+    loadProducts();
+  }, []);
 
   const visibleProducts = useMemo(
-    () => products.filter((product) => product.visible !== false),
+    () =>
+      products.filter(
+        (product) => product.visible !== false
+      ),
     [products]
   );
 
   const newArrivals = useMemo(
-    () => visibleProducts.filter((product) => product.new_arrival),
+    () =>
+      visibleProducts.filter((product) =>
+        isNewArrival(product)
+      ),
     [visibleProducts]
   );
 
   const featured = useMemo(
-    () => visibleProducts.filter((product) => product.featured),
+    () =>
+      visibleProducts.filter(
+        (product) => product.featured === true
+      ),
     [visibleProducts]
   );
 
   const total = useMemo(() => {
     return cart.reduce((sum, item) => {
-      const price =
-        Number(item.product[`price_${currency.toLowerCase()}`]) || 0;
-
-      return sum + price * item.qty;
+      return (
+        sum +
+        getPrice(item.product, currency) * item.qty
+      );
     }, 0);
   }, [cart, currency]);
 
   function openProduct(product) {
     setSelected(product);
     setPage("product");
-    window.scrollTo(0, 0);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
   }
 
   function addToBag(product) {
@@ -114,21 +190,35 @@ function App() {
       if (existing) {
         return current.map((item) =>
           item.product.id === product.id
-            ? { ...item, qty: item.qty + 1 }
+            ? {
+                ...item,
+                qty: item.qty + 1
+              }
             : item
         );
       }
 
-      return [...current, { product, qty: 1 }];
+      return [
+        ...current,
+        {
+          product,
+          qty: 1
+        }
+      ];
     });
 
     setMessage("Added to your bag.");
-    setTimeout(() => setMessage(""), 2000);
+
+    setTimeout(() => {
+      setMessage("");
+    }, 2000);
   }
 
   function removeFromBag(productId) {
     setCart((current) =>
-      current.filter((item) => item.product.id !== productId)
+      current.filter(
+        (item) => item.product.id !== productId
+      )
     );
   }
 
@@ -137,7 +227,13 @@ function App() {
       current
         .map((item) =>
           item.product.id === productId
-            ? { ...item, qty: Math.max(1, item.qty + amount) }
+            ? {
+                ...item,
+                qty: Math.max(
+                  1,
+                  item.qty + amount
+                )
+              }
             : item
         )
         .filter((item) => item.qty > 0)
@@ -157,8 +253,10 @@ function App() {
       "";
 
     const lines = cart.map((item) => {
-      const price =
-        Number(item.product[`price_${currency.toLowerCase()}`]) || 0;
+      const price = getPrice(
+        item.product,
+        currency
+      );
 
       return `${item.product.name} x${item.qty} - ${money(
         price * item.qty,
@@ -175,13 +273,20 @@ function App() {
     ].join("\n");
 
     if (phone) {
-      const cleanPhone = String(phone).replace(/[^\d]/g, "");
+      const cleanPhone = String(phone).replace(
+        /[^\d]/g,
+        ""
+      );
+
       window.open(
-        `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`,
+        `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
+          text
+        )}`,
         "_blank"
       );
     } else {
       navigator.clipboard?.writeText(text);
+
       setMessage(
         "Order details copied. Please contact us on WhatsApp."
       );
@@ -189,12 +294,13 @@ function App() {
   }
 
   const hero =
-    settings.hero_image || DEFAULT_SETTINGS.hero_image;
+    settings.hero_image ||
+    DEFAULT_SETTINGS.hero_image;
 
   return (
     <div className="app">
       <div className="announce">
-        {settings.announcement || DEFAULT_SETTINGS.announcement}
+        {settings.announcement}
       </div>
 
       <header>
@@ -214,9 +320,15 @@ function App() {
         </button>
 
         <nav>
-          <button onClick={() => setPage("shop")}>SHOP</button>
+          <button onClick={() => setPage("shop")}>
+            SHOP
+          </button>
 
-          <button onClick={() => setPage("collections")}>
+          <button
+            onClick={() =>
+              setPage("collections")
+            }
+          >
             COLLECTIONS
           </button>
 
@@ -237,152 +349,228 @@ function App() {
             <option value="EUR">EUR</option>
           </select>
 
+          <button
+            onClick={() => setPage("admin")}
+          >
+            ADMIN
+          </button>
+
           <button onClick={() => setPage("cart")}>
-            BAG ({cart.reduce((sum, item) => sum + item.qty, 0)})
+            BAG (
+            {cart.reduce(
+              (sum, item) => sum + item.qty,
+              0
+            )}
+            )
           </button>
         </div>
       </header>
 
-      {message && <div className="toast">{message}</div>}
+      {message && (
+        <div className="toast">
+          {message}
+        </div>
+      )}
 
       {page === "home" && (
         <>
-          <section className="hero">
-            <img src={hero} alt="RZIA'S AURA" />
-
-            <div className="heroContent">
-              <p>RZIA’S AURA</p>
+          <section
+            className="hero"
+            style={{
+              backgroundImage: `url("${hero}")`
+            }}
+          >
+            <div className="hero-overlay">
+              <p className="eyebrow">
+                RZIA’S AURA
+              </p>
 
               <h1>
-                {settings.hero_title ||
-                  DEFAULT_SETTINGS.hero_title}
+                {settings.hero_title}
               </h1>
 
-              <span>
-                {settings.hero_text ||
-                  DEFAULT_SETTINGS.hero_text}
-              </span>
+              <p>
+                {settings.hero_text}
+              </p>
 
-              <button onClick={() => setPage("shop")}>
-                SHOP NOW
+              <button
+                className="primary-button"
+                onClick={() => setPage("shop")}
+              >
+                SHOP COLLECTION
               </button>
             </div>
           </section>
 
           <section className="section">
-            <h2>NEW ARRIVALS</h2>
-
-            {newArrivals.length ? (
-              <div className="grid">
-                {newArrivals.slice(0, 8).map((product) => (
-                  <Card
-                    key={product.id}
-                    product={product}
-                    currency={currency}
-                    onClick={() => openProduct(product)}
-                  />
-                ))}
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  CURATED FOR YOU
+                </p>
+                <h2>Featured</h2>
               </div>
+
+              <button
+                onClick={() => setPage("shop")}
+              >
+                VIEW ALL
+              </button>
+            </div>
+
+            {loading ? (
+              <p>Products loading...</p>
+            ) : featured.length === 0 ? (
+              <p>
+                No featured products available yet.
+              </p>
             ) : (
-              <Empty text="New arrivals coming soon." />
+              <ProductGrid
+                products={featured}
+                currency={currency}
+                openProduct={openProduct}
+                addToBag={addToBag}
+              />
             )}
+          </section>
+
+          <section className="story section">
+            <p className="eyebrow">
+              OUR STORY
+            </p>
+
+            <h2>
+              Elegance, Royalty & Modern Fashion
+            </h2>
+
+            <p>
+              {settings.story_text}
+            </p>
           </section>
 
           <section className="section">
-            <h2>FEATURED</h2>
-
-            {featured.length ? (
-              <div className="grid">
-                {featured.slice(0, 8).map((product) => (
-                  <Card
-                    key={product.id}
-                    product={product}
-                    currency={currency}
-                    onClick={() => openProduct(product)}
-                  />
-                ))}
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">
+                  JUST ARRIVED
+                </p>
+                <h2>New Arrivals</h2>
               </div>
+            </div>
+
+            {newArrivals.length === 0 ? (
+              <p>
+                No new arrivals available yet.
+              </p>
             ) : (
-              <Empty text="Featured pieces coming soon." />
+              <ProductGrid
+                products={newArrivals}
+                currency={currency}
+                openProduct={openProduct}
+                addToBag={addToBag}
+              />
             )}
           </section>
-
-          <Story settings={settings} />
         </>
       )}
 
-      {(page === "shop" || page === "new") && (
+      {page === "shop" && (
         <section className="section">
-          <h1>
-            {page === "new" ? "NEW ARRIVALS" : "SHOP"}
-          </h1>
-
-          {(
-            page === "new"
-              ? newArrivals
-              : visibleProducts
-          ).length ? (
-            <div className="grid">
-              {(page === "new"
-                ? newArrivals
-                : visibleProducts
-              ).map((product) => (
-                <Card
-                  key={product.id}
-                  product={product}
-                  currency={currency}
-                  onClick={() => openProduct(product)}
-                />
-              ))}
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">
+                RZIA’S AURA
+              </p>
+              <h1>Shop</h1>
             </div>
+          </div>
+
+          {loading ? (
+            <p>Products loading...</p>
+          ) : visibleProducts.length === 0 ? (
+            <p>No products available yet.</p>
           ) : (
-            <Empty text="No products available yet." />
+            <ProductGrid
+              products={visibleProducts}
+              currency={currency}
+              openProduct={openProduct}
+              addToBag={addToBag}
+            />
+          )}
+        </section>
+      )}
+
+      {page === "new" && (
+        <section className="section">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">
+                LATEST EDIT
+              </p>
+              <h1>New Arrivals</h1>
+            </div>
+          </div>
+
+          {newArrivals.length === 0 ? (
+            <p>No new arrivals available yet.</p>
+          ) : (
+            <ProductGrid
+              products={newArrivals}
+              currency={currency}
+              openProduct={openProduct}
+              addToBag={addToBag}
+            />
           )}
         </section>
       )}
 
       {page === "collections" && (
         <section className="section">
-          <h1>COLLECTIONS</h1>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">
+                DISCOVER
+              </p>
+              <h1>Collections</h1>
+            </div>
+          </div>
 
-          {collections.length ? (
-            <div className="collectionGrid">
+          {collections.length === 0 ? (
+            <div className="empty-state">
+              <h2>Our Collections</h2>
+              <p>
+                Curated collections are coming soon.
+              </p>
+            </div>
+          ) : (
+            <div className="collection-grid">
               {collections.map((collection) => (
                 <div
-                  className="collection"
+                  className="collection-card"
                   key={collection.id}
                 >
-                  {collection.image_url ? (
+                  {collection.image && (
                     <img
-                      src={collection.image_url}
-                      alt={collection.name}
+                      src={collection.image}
+                      alt={
+                        collection.name ||
+                        "Collection"
+                      }
                     />
-                  ) : (
-                    <div className="placeholder">
-                      RZIA’S AURA
-                    </div>
                   )}
 
-                  <h2>{collection.name}</h2>
-
-                  <p>{collection.description}</p>
-
-                  <button
-                    onClick={() => setPage("shop")}
-                  >
-                    EXPLORE
-                  </button>
+                  <h3>
+                    {collection.name}
+                  </h3>
                 </div>
               ))}
             </div>
-          ) : (
-            <Empty text="Collections coming soon." />
           )}
         </section>
       )}
 
       {page === "product" && selected && (
-        <Product
+        <ProductDetails
           product={selected}
           currency={currency}
           addToBag={addToBag}
@@ -402,106 +590,191 @@ function App() {
         />
       )}
 
+      {page === "admin" && <Admin />}
+
       <Footer settings={settings} />
     </div>
   );
 }
 
-function Card({ product, currency, onClick }) {
-  const price =
-    product[`price_${currency.toLowerCase()}`];
+function ProductGrid({
+  products,
+  currency,
+  openProduct,
+  addToBag
+}) {
+  return (
+    <div className="product-grid">
+      {products.map((product) => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          currency={currency}
+          openProduct={openProduct}
+          addToBag={addToBag}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ProductCard({
+  product,
+  currency,
+  openProduct,
+  addToBag
+}) {
+  const images = Array.isArray(product.images)
+    ? product.images
+    : [];
+
+  const image =
+    images[0] ||
+    product.image ||
+    "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80";
 
   return (
-    <article className="card" onClick={onClick}>
-      <div className="photo">
-        {product.images?.[0] ? (
+    <article className="product-card">
+      <button
+        className="product-image-button"
+        onClick={() => openProduct(product)}
+      >
+        <div className="product-image-wrap">
           <img
-            src={product.images[0]}
-            alt={product.name}
+            src={image}
+            alt={product.name || "Product"}
           />
-        ) : (
-          <div className="placeholder">
-            RZIA’S AURA
-          </div>
-        )}
 
-        {product.badge && <b>{product.badge}</b>}
+          {product.badge && (
+            <span className="product-badge">
+              {product.badge}
+            </span>
+          )}
+        </div>
+      </button>
+
+      <div className="product-info">
+        <p className="product-category">
+          {product.category || "RZIA’S AURA"}
+        </p>
+
+        <h3>
+          {product.name || "Unnamed Product"}
+        </h3>
+
+        <p className="product-price">
+          {money(
+            getPrice(product, currency),
+            currency
+          )}
+        </p>
+
+        <button
+          className="add-button"
+          onClick={() => addToBag(product)}
+        >
+          ADD TO BAG
+        </button>
       </div>
-
-      <h3>{product.name}</h3>
-
-      <p>{money(price, currency)}</p>
     </article>
   );
 }
 
-function Product({
+function ProductDetails({
   product,
   currency,
   addToBag,
   back
 }) {
-  const images =
-    product.images?.length
-      ? product.images
-      : [""];
+  const images = Array.isArray(product.images)
+    ? product.images
+    : [];
 
-  const price =
-    product[`price_${currency.toLowerCase()}`];
+  const image =
+    images[0] ||
+    product.image ||
+    "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=1200&q=80";
+
+  const sizes = getSizes(product);
+  const colours = getColours(product);
 
   return (
-    <section className="product">
-      <button onClick={back}>← BACK</button>
+    <section className="product-detail section">
+      <button
+        className="back-button"
+        onClick={back}
+      >
+        ← Back to Shop
+      </button>
 
-      <div className="productWrap">
-        <div className="gallery">
-          {images.map((image, index) =>
-            image ? (
-              <img
-                key={index}
-                src={image}
-                alt={`${product.name} ${index + 1}`}
-              />
-            ) : (
-              <div
-                className="placeholder"
-                key={index}
-              >
-                RZIA’S AURA
-              </div>
-            )
-          )}
+      <div className="product-detail-grid">
+        <div className="product-detail-image">
+          <img
+            src={image}
+            alt={product.name}
+          />
         </div>
 
-        <div className="productInfo">
-          <p>{product.category}</p>
+        <div className="product-detail-info">
+          {product.badge && (
+            <span className="product-badge">
+              {product.badge}
+            </span>
+          )}
+
+          <p className="eyebrow">
+            {product.category ||
+              "RZIA’S AURA"}
+          </p>
 
           <h1>{product.name}</h1>
 
-          <h2>{money(price, currency)}</h2>
+          <h2>
+            {money(
+              getPrice(product, currency),
+              currency
+            )}
+          </h2>
 
-          <p>{product.description}</p>
+          {product.description && (
+            <p className="description">
+              {product.description}
+            </p>
+          )}
 
-          <p>
-            <b>Sizes:</b>{" "}
-            {(product.sizes || []).join(" · ") ||
-              "Available on request"}
-          </p>
+          {sizes.length > 0 && (
+            <div className="detail-meta">
+              <strong>Sizes</strong>
+              <p>{sizes.join(" • ")}</p>
+            </div>
+          )}
 
-          <p>
-            <b>Colours:</b>{" "}
-            {(product.colours || []).join(" · ") || "—"}
-          </p>
+          {colours.length > 0 && (
+            <div className="detail-meta">
+              <strong>Colours</strong>
+              <p>{colours.join(" • ")}</p>
+            </div>
+          )}
 
-          <p>
-            <b>Stock:</b>{" "}
-            {product.stock ?? "Available"}
-          </p>
+          <div className="detail-meta">
+            <strong>Stock</strong>
+            <p>
+              {Number(product.stock || 0) > 0
+                ? `${product.stock} available`
+                : "Currently unavailable"}
+            </p>
+          </div>
 
           <button
+            className="primary-button"
+            disabled={
+              Number(product.stock || 0) <= 0
+            }
             onClick={() => addToBag(product)}
           >
-            ADD TO BAG
+            {Number(product.stock || 0) > 0
+              ? "ADD TO BAG"
+              : "OUT OF STOCK"}
           </button>
         </div>
       </div>
@@ -519,161 +792,97 @@ function Cart({
   back
 }) {
   return (
-    <section className="section">
-      <button onClick={back}>← CONTINUE SHOPPING</button>
-
-      <h1>YOUR BAG</h1>
+    <section className="section cart-page">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">
+            YOUR SELECTION
+          </p>
+          <h1>Your Bag</h1>
+        </div>
+      </div>
 
       {!cart.length ? (
-        <Empty text="Your bag is empty." />
+        <div className="empty-state">
+          <h2>Your bag is empty.</h2>
+
+          <button
+            className="primary-button"
+            onClick={back}
+          >
+            CONTINUE SHOPPING
+          </button>
+        </div>
       ) : (
         <>
-          <div className="cartList">
+          <div className="cart-list">
             {cart.map((item) => {
-              const price =
-                Number(
-                  item.product[
-                    `price_${currency.toLowerCase()}`
-                  ]
-                ) || 0;
+              const product = item.product;
+
+              const images = Array.isArray(
+                product.images
+              )
+                ? product.images
+                : [];
+
+              const image =
+                images[0] ||
+                product.image ||
+                "";
 
               return (
                 <div
-                  className="cartitem"
-                  key={item.product.id}
+                  className="cart-item"
+                  key={product.id}
                 >
-                  <div>
-                    <b>{item.product.name}</b>
+                  {image && (
+                    <img
+                      src={image}
+                      alt={product.name}
+                    />
+                  )}
+
+                  <div className="cart-item-info">
+                    <h3>{product.name}</h3>
+
                     <p>
-                      {money(price, currency)}
+                      {money(
+                        getPrice(
+                          product,
+                          currency
+                        ),
+                        currency
+                      )}
                     </p>
-                  </div>
 
-                  <div className="quantity">
-                    <button
-                      onClick={() =>
-                        changeQuantity(
-                          item.product.id,
-                          -1
-                        )
-                      }
-                    >
-                      −
-                    </button>
+                    <div className="quantity">
+                      <button
+                        onClick={() =>
+                          changeQuantity(
+                            product.id,
+                            -1
+                          )
+                        }
+                      >
+                        −
+                      </button>
 
-                    <span>{item.qty}</span>
+                      <span>{item.qty}</span>
 
-                    <button
-                      onClick={() =>
-                        changeQuantity(
-                          item.product.id,
-                          1
-                        )
-                      }
-                    >
-                      +
-                    </button>
+                      <button
+                        onClick={() =>
+                          changeQuantity(
+                            product.id,
+                            1
+                          )
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
                   <button
+                    className="delete-button"
                     onClick={() =>
-                      removeFromBag(item.product.id)
-                    }
-                  >
-                    REMOVE
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <h2>Total: {money(total, currency)}</h2>
-
-          <button onClick={checkout}>
-            CHECKOUT ON WHATSAPP
-          </button>
-        </>
-      )}
-    </section>
-  );
-}
-
-function Story({ settings }) {
-  return (
-    <section className="section story">
-      <h2>OUR STORY</h2>
-      <p>
-        {settings.story_text ||
-          DEFAULT_SETTINGS.story_text}
-      </p>
-    </section>
-  );
-}
-
-function Footer({ settings }) {
-  return (
-    <footer>
-      <div>
-        <b>RZIA’S AURA</b>
-        <p>
-          {settings.story_text ||
-            DEFAULT_SETTINGS.story_text}
-        </p>
-      </div>
-
-      <div>
-        <b>CONTACT</b>
-        <p>
-          {settings.email ||
-            DEFAULT_SETTINGS.email}
-          <br />
-          {settings.address ||
-            DEFAULT_SETTINGS.address}
-        </p>
-      </div>
-
-      <div>
-        <b>POLICIES</b>
-        <p>
-          Shipping
-          <br />
-          Returns & Exchange
-          <br />
-          Privacy Policy
-        </p>
-      </div>
-
-      <div>
-        <b>FOLLOW</b>
-        <p>
-          {settings.instagram ||
-            DEFAULT_SETTINGS.instagram}
-          <br />
-          {settings.facebook ||
-            DEFAULT_SETTINGS.facebook}
-          <br />
-          {settings.tiktok ||
-            DEFAULT_SETTINGS.tiktok}
-        </p>
-      </div>
-    </footer>
-  );
-}
-
-function Empty({ text }) {
-  return (
-    <div className="empty">
-      <p>{text}</p>
-    </div>
-  );
-}
-
-const rootElement = document.getElementById("root");
-
-if (rootElement) {
-  createRoot(rootElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-        }
+    
