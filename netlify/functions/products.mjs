@@ -1,13 +1,9 @@
 import { getStore } from "@netlify/blobs";
 
-const STORE_NAME = "rzias-aura-data";
+const store = getStore("rzias-aura-data");
 
 export default async function handler(request) {
   try {
-    const store = getStore({
-      name: STORE_NAME,
-    });
-
     if (request.method === "GET") {
       const products = await store.get("products", {
         type: "json",
@@ -22,7 +18,6 @@ export default async function handler(request) {
           status: 200,
           headers: {
             "Content-Type": "application/json",
-            "Cache-Control": "no-store",
           },
         }
       );
@@ -46,12 +41,12 @@ export default async function handler(request) {
         );
       }
 
-      const oldProducts = await store.get("products", {
+      const existing = await store.get("products", {
         type: "json",
       });
 
-      const products = Array.isArray(oldProducts)
-        ? oldProducts
+      const products = Array.isArray(existing)
+        ? existing
         : [];
 
       const product = {
@@ -64,10 +59,10 @@ export default async function handler(request) {
         (item) => item.id === product.id
       );
 
-      if (index === -1) {
-        products.push(product);
-      } else {
+      if (index >= 0) {
         products[index] = product;
+      } else {
+        products.push(product);
       }
 
       await store.setJSON("products", products);
@@ -106,12 +101,12 @@ export default async function handler(request) {
         );
       }
 
-      const oldProducts = await store.get("products", {
+      const existing = await store.get("products", {
         type: "json",
       });
 
-      const products = Array.isArray(oldProducts)
-        ? oldProducts
+      const products = Array.isArray(existing)
+        ? existing
         : [];
 
       const filtered = products.filter(
@@ -147,12 +142,12 @@ export default async function handler(request) {
       }
     );
   } catch (error) {
-    console.error(error);
+    console.error("Products function error:", error);
 
     return new Response(
       JSON.stringify({
         success: false,
-        message: error.message || "Server error.",
+        message: error.message || "Server error",
       }),
       {
         status: 500,
@@ -162,4 +157,4 @@ export default async function handler(request) {
       }
     );
   }
-    }
+}
