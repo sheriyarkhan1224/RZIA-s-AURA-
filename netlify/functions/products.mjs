@@ -2,42 +2,21 @@ import { getStore } from "@netlify/blobs";
 
 const STORE_NAME = "rzias-aura-data";
 
-function getProductsStore() {
-  return getStore({
-    name: STORE_NAME,
-  });
-}
-
-async function readProducts() {
-  const store = getProductsStore();
-
-  const products = await store.get("products", {
-    type: "json",
-  });
-
-  return Array.isArray(products) ? products : [];
-}
-
-async function saveProducts(products) {
-  const store = getProductsStore();
-
-  await store.setJSON("products", products);
-
-  return products;
-}
-
 export default async function handler(request) {
   try {
-    const method = request.method.toUpperCase();
+    const store = getStore({
+      name: STORE_NAME,
+    });
 
-    // GET PRODUCTS
-    if (method === "GET") {
-      const products = await readProducts();
+    if (request.method === "GET") {
+      const products = await store.get("products", {
+        type: "json",
+      });
 
       return new Response(
         JSON.stringify({
           success: true,
-          products,
+          products: Array.isArray(products) ? products : [],
         }),
         {
           status: 200,
@@ -49,8 +28,7 @@ export default async function handler(request) {
       );
     }
 
-    // SAVE / UPDATE PRODUCT
-    if (method === "POST") {
+    if (request.method === "POST") {
       const body = await request.json();
 
       if (!body || !body.name) {
@@ -68,7 +46,13 @@ export default async function handler(request) {
         );
       }
 
-      const products = await readProducts();
+      const oldProducts = await store.get("products", {
+        type: "json",
+      });
+
+      const products = Array.isArray(oldProducts)
+        ? oldProducts
+        : [];
 
       const product = {
         ...body,
@@ -76,17 +60,17 @@ export default async function handler(request) {
         updatedAt: new Date().toISOString(),
       };
 
-      const existingIndex = products.findIndex(
+      const index = products.findIndex(
         (item) => item.id === product.id
       );
 
-      if (existingIndex >= 0) {
-        products[existingIndex] = product;
-      } else {
+      if (index === -1) {
         products.push(product);
+      } else {
+        products[index] = product;
       }
 
-      await saveProducts(products);
+      await store.setJSON("products", products);
 
       return new Response(
         JSON.stringify({
@@ -103,8 +87,7 @@ export default async function handler(request) {
       );
     }
 
-    // DELETE PRODUCT
-    if (method === "DELETE") {
+    if (request.method === "DELETE") {
       const url = new URL(request.url);
       const id = url.searchParams.get("id");
 
@@ -123,18 +106,24 @@ export default async function handler(request) {
         );
       }
 
-      const products = await readProducts();
+      const oldProducts = await store.get("products", {
+        type: "json",
+      });
 
-      const filteredProducts = products.filter(
+      const products = Array.isArray(oldProducts)
+        ? oldProducts
+        : [];
+
+      const filtered = products.filter(
         (item) => item.id !== id
       );
 
-      await saveProducts(filteredProducts);
+      await store.setJSON("products", filtered);
 
       return new Response(
         JSON.stringify({
           success: true,
-          products: filteredProducts,
+          products: filtered,
         }),
         {
           status: 200,
@@ -145,7 +134,6 @@ export default async function handler(request) {
       );
     }
 
-    // OTHER METHODS
     return new Response(
       JSON.stringify({
         success: false,
@@ -159,7 +147,7 @@ export default async function handler(request) {
       }
     );
   } catch (error) {
-    console.error("Products function error:", error);
+    console.error(error);
 
     return new Response(
       JSON.stringify({
@@ -174,4 +162,4 @@ export default async function handler(request) {
       }
     );
   }
-}
+    }
