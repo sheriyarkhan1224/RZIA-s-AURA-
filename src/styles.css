@@ -606,3 +606,45 @@ body{background:#fbfaf7;color:#181818}.announce{text-align:center;background:#17
     flex: 1;
   }
   }
+/* =========================================
+   RZIA'S AURA — PRODUCT IMAGE SIZE FIX
+========================================= */
+
+/* Product cards */
+.product-card img,
+.product-grid .product-card img,
+.products-grid .product-card img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  height: auto;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Product image container */
+.product-card .product-image,
+.product-card .product-card-image,
+.product-card .image-wrap {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+}
+
+/* Product detail page */
+.product-detail img,
+.product-details img {
+  max-width: 100%;
+  max-height: 650px;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .product-card img,
+  .product-grid .product-card img,
+  .products-grid .product-card img {
+    aspect-ratio: 3 / 4;
+  }
+}
