@@ -8,6 +8,8 @@ import { createRoot } from "react-dom/client";
 
 import "./styles.css";
 
+const HERO_BANNER = "/assets/hero-banner.jpg";
+
 import Admin from "./admin/Admin";
 
 const DEFAULT_SETTINGS = {
