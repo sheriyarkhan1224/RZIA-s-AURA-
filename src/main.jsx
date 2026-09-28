@@ -191,9 +191,9 @@ function App() {
   const [collections, setCollections] =
     useState([]);
 
-  const [settings] =
-    useState(DEFAULT_SETTINGS);
-
+  const [settings, setSettings] =
+  useState(DEFAULT_SETTINGS);
+  
   const [currency, setCurrency] =
     useState("PKR");
 
@@ -222,8 +222,39 @@ function App() {
   }
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+  loadProducts();
+
+  async function loadSettings() {
+    try {
+      const response = await fetch(
+        "/.netlify/functions/settings",
+        {
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Settings request failed");
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.settings) {
+        setSettings((current) => ({
+          ...current,
+          ...data.settings,
+        }));
+      }
+    } catch (error) {
+      console.error(
+        "Settings loading error:",
+        error
+      );
+    }
+  }
+
+  loadSettings();
+}, []);
 
   const visibleProducts = useMemo(() => {
     return products.filter(
@@ -556,7 +587,7 @@ function App() {
           <section
             className="hero"
             style={{
-              backgroundImage: `url("${HERO_BANNER}")`,
+              backgroundImage: `url("${hero}")`,
             }}
           >
 
