@@ -347,7 +347,7 @@ async function loadSettings() {
       className="primary-button"
     >
       {savingHero ? "Saving Hero..." : "Save Hero Banner"}
-    </button>
+        </button>
   </div>
 </section>
       <div className="admin-topbar">
