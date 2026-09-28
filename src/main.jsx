@@ -556,7 +556,7 @@ function App() {
           <section
             className="hero"
             style={{
-              backgroundImage: `url("${hero}")`,
+              backgroundImage: `url("${HERO_BANNER}")`,
             }}
           >
 
