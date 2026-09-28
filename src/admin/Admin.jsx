@@ -26,6 +26,16 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
+  const [settings, setSettings] = useState({
+  hero_image: "",
+  hero_title: "Elegance Made Timeless",
+  hero_text:
+    "Discover refined fashion created for women who embrace elegance, confidence and individuality.",
+});
+
+const [heroFile, setHeroFile] = useState(null);
+const [heroPreview, setHeroPreview] = useState("");
+const [savingHero, setSavingHero] = useState(false);
 
   async function loadProducts() {
     try {
@@ -53,8 +63,32 @@ export default function Admin() {
   }
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+  loadProducts();
+  loadSettings();
+}, []);
+async function loadSettings() {
+  try {
+    const response = await fetch(
+      "/.netlify/functions/settings"
+    );
+
+    if (!response.ok) {
+      throw new Error("Settings load failed");
+    }
+
+    const data = await response.json();
+
+    if (data.success && data.settings) {
+      setSettings(data.settings);
+
+      if (data.settings.hero_image) {
+        setHeroPreview(data.settings.hero_image);
+      }
+    }
+  } catch (error) {
+    console.error("Settings loading error:", error);
+  }
+}
 
   function updateField(field, value) {
     setProduct((old) => ({
