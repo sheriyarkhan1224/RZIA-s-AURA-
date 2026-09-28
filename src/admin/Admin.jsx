@@ -310,6 +310,46 @@ async function loadSettings() {
 
   return (
     <div className="pro-admin">
+      <section className="admin-card">
+  <div className="card-heading">
+    <div>
+      <h2>Hero Banner</h2>
+      <p>Homepage ki main banner image yahan se change karein.</p>
+    </div>
+  </div>
+
+  <div className="hero-admin-upload">
+    <input
+      type="file"
+      accept="image/*"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+
+        if (!file) return;
+
+        setHeroFile(file);
+        setHeroPreview(URL.createObjectURL(file));
+      }}
+    />
+
+    {heroPreview && (
+      <img
+        src={heroPreview}
+        alt="Hero Banner Preview"
+        className="hero-admin-preview"
+      />
+    )}
+
+    <button
+      type="button"
+      onClick={saveHero}
+      disabled={savingHero}
+      className="primary-button"
+    >
+      {savingHero ? "Saving Hero..." : "Save Hero Banner"}
+    </button>
+  </div>
+</section>
       <div className="admin-topbar">
         <div>
           <div className="admin-brand">RZIA’S AURA</div>
