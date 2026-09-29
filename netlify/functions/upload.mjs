@@ -1,104 +1,172 @@
 import { getStore } from "@netlify/blobs";
 
-const store = getStore("rzias-aura-images");
+const STORE_NAME = "rzias-aura-images";
 
-export default async function handler(request) {
+export default async function handler(req) {
   try {
-    if (request.method === "POST") {
-      const formData = await request.formData();
-      const file = formData.get("file");
-
-      if (!file || typeof file.arrayBuffer !== "function") {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: "Image file required hai.",
-          }),
-          {
-            status: 400,
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-      }
-
-      const extension =
-        file.name?.split(".").pop()?.toLowerCase() || "jpg";
-
-      const key = `products/${crypto.randomUUID()}.${extension}`;
-
-      const buffer = await file.arrayBuffer();
-
-      await store.set(key, buffer, {
-        metadata: {
-          contentType: file.type || "image/jpeg",
-        },
-      });
-
-      const url =
-        `/.netlify/functions/upload?key=` +
-        encodeURIComponent(key);
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          url,
-        }),
+    if (req.method !== "POST") {
+      return Response.json(
         {
-          status: 200,
+          success: false,
+          message: "Method not allowed."
+        },
+        {
+          status: 405,
           headers: {
-            "Content-Type": "application/json",
-          },
+            Allow: "POST"
+          }
         }
       );
     }
 
-    if (request.method === "GET") {
-      const url = new URL(request.url);
-      const key = url.searchParams.get("key");
+    const contentType =
+      req.headers.get("content-type") || "";
 
-      if (!key) {
-        return new Response("Image key required", {
-          status: 400,
-        });
+    let file;
+    let filename = "image";
+    let mimeType = "application/octet-stream";
+
+    /*
+      Preferred method:
+      Admin sends multipart/form-data.
+    */
+    if (
+      contentType.includes(
+        "multipart/form-data"
+      )
+    ) {
+      const form = await req.formData();
+
+      file = form.get("file");
+
+      if (
+        !file ||
+        typeof file.arrayBuffer !==
+          "function"
+      ) {
+        return Response.json(
+          {
+            success: false,
+            message:
+              "No image file received."
+          },
+          {
+            status: 400
+          }
+        );
       }
 
-      const image = await store.get(key, {
-        type: "arrayBuffer",
-      });
+      filename =
+        file.name || filename;
 
-      if (!image) {
-        return new Response("Image not found", {
-          status: 404,
-        });
-      }
-
-      return new Response(image, {
-        status: 200,
-        headers: {
-          "Content-Type": "image/*",
-          "Cache-Control": "public, max-age=31536000, immutable",
+      mimeType =
+        file.type || mimeType;
+    } else {
+      return Response.json(
+        {
+          success: false,
+          message:
+            "Please upload an image file."
         },
-      });
+        {
+          status: 400
+        }
+      );
     }
 
-    return new Response("Method not allowed", {
-      status: 405,
+    if (
+      !mimeType.startsWith("image/")
+    ) {
+      return Response.json(
+        {
+          success: false,
+          message:
+            "Only image files are allowed."
+        },
+        {
+          status: 400
+        }
+      );
+    }
+
+    /*
+      Keep individual uploads reasonably small.
+      Netlify's buffered function payload limit is
+      6 MB, and binary payloads have Base64 overhead.
+    */
+    const MAX_SIZE =
+      4 * 1024 * 1024;
+
+    if (file.size > MAX_SIZE) {
+      return Response.json(
+        {
+          success: false,
+          message:
+            "Image is too large. Please use an image under 4 MB."
+        },
+        {
+          status: 413
+        }
+      );
+    }
+
+    const extension =
+      filename.includes(".")
+        ? filename
+            .split(".")
+            .pop()
+            .toLowerCase()
+        : "jpg";
+
+    const safeExtension =
+      /^[a-z0-9]+$/.test(extension)
+        ? extension
+        : "jpg";
+
+    const key =
+      `${Date.now()}-${crypto.randomUUID()}.${safeExtension}`;
+
+    const store =
+      getStore(STORE_NAME);
+
+    await store.set(
+      key,
+      file,
+      {
+        metadata: {
+          contentType: mimeType,
+          originalName: filename
+        }
+      }
+    );
+
+    const imageUrl =
+      `/api/image/${encodeURIComponent(
+        key
+      )}`;
+
+    return Response.json({
+      success: true,
+      key,
+      url: imageUrl,
+      filename,
+      contentType: mimeType
     });
   } catch (error) {
-    console.error("Upload function error:", error);
+    console.error(
+      "UPLOAD ERROR:",
+      error
+    );
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: error.message || "Upload failed",
-      }),
+    return Response.json(
       {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        success: false,
+        message:
+          error?.message ||
+          "Image upload failed."
+      },
+      {
+        status: 500
       }
     );
   }
