@@ -94,13 +94,9 @@ export default async function handler(req) {
 
     if (req.method === "PUT") {
       const body = await req.json();
-
       const nextData = mergeData(body);
 
-      await store.setJSON(
-        DATA_KEY,
-        nextData
-      );
+      await store.setJSON(DATA_KEY, nextData);
 
       return Response.json({
         success: true,
@@ -140,4 +136,4 @@ export default async function handler(req) {
       }
     );
   }
-  
+}
