@@ -8,8 +8,6 @@ import { createRoot } from "react-dom/client";
 
 import "./styles.css";
 
-const HERO_BANNER = "/assets/hero-banner.jpg";
-
 import Admin from "./admin/Admin";
 
 const DEFAULT_SETTINGS = {
@@ -56,7 +54,8 @@ function money(value, currency) {
     EUR: "€",
   };
 
-  const symbol = symbols[currency] || currency;
+  const symbol =
+    symbols[currency] || currency;
 
   if (currency === "EUR") {
     return `${symbol} ${amount.toLocaleString(
@@ -153,10 +152,16 @@ function isNewArrival(product) {
   );
 }
 
-async function getProducts() {
+function isFeatured(product) {
+  return (
+    product?.featured === true
+  );
+}
+
+async function getWebsiteData() {
   try {
     const response = await fetch(
-      "/.netlify/functions/products",
+      "/api/admin-data",
       {
         cache: "no-store",
       }
@@ -164,40 +169,38 @@ async function getProducts() {
 
     if (!response.ok) {
       throw new Error(
-        `Products request failed: ${response.status}`
+        `Website data request failed: ${response.status}`
       );
     }
 
     const data = await response.json();
 
-    return Array.isArray(data)
-      ? data
-      : Array.isArray(data.products)
-      ? data.products
-      : [];
+    return data || {};
   } catch (error) {
     console.error(
-      "Products loading error:",
+      "Website data loading error:",
       error
     );
 
-    return [];
+    return {};
   }
 }
 
 function App() {
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] =
+    useState([]);
 
   const [collections, setCollections] =
     useState([]);
 
   const [settings, setSettings] =
-  useState(DEFAULT_SETTINGS);
-  
+    useState(DEFAULT_SETTINGS);
+
   const [currency, setCurrency] =
     useState("PKR");
 
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] =
+    useState([]);
 
   const [page, setPage] =
     useState("home");
@@ -211,87 +214,142 @@ function App() {
   const [loading, setLoading] =
     useState(true);
 
-  async function loadProducts() {
-    setLoading(true);
-
-    const data = await getProducts();
-
-    setProducts(data);
-
-    setLoading(false);
-  }
-
   useEffect(() => {
-  loadProducts();
+    let mounted = true;
 
-  async function loadSettings() {
-    try {
-      const response = await fetch(
-        "/.netlify/functions/settings",
-        {
-          cache: "no-store",
-        }
+    async function loadWebsite() {
+      setLoading(true);
+
+      const data =
+        await getWebsiteData();
+
+      if (!mounted) return;
+
+      const websiteProducts =
+        Array.isArray(data.products)
+          ? data.products
+          : [];
+
+      const websiteCollections =
+        Array.isArray(
+          data.collections
+        )
+          ? data.collections
+          : [];
+
+      setProducts(
+        websiteProducts
       );
 
-      if (!response.ok) {
-        throw new Error("Settings request failed");
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.settings) {
-        setSettings((current) => ({
-          ...current,
-          ...data.settings,
-        }));
-      }
-    } catch (error) {
-      console.error(
-        "Settings loading error:",
-        error
+      setCollections(
+        websiteCollections
       );
+
+      const savedSettings =
+        data.settings || {};
+
+      const savedAnnouncement =
+        data.announcement || {};
+
+      setSettings((current) => ({
+        ...current,
+
+        announcement:
+          savedAnnouncement.text ??
+          current.announcement,
+
+        hero_title:
+          savedSettings.hero_heading ??
+          current.hero_title,
+
+        hero_text:
+          savedSettings.hero_text ??
+          current.hero_text,
+
+        hero_image:
+          savedSettings.hero_image ??
+          current.hero_image,
+
+        story_text:
+          savedSettings.about_text ??
+          current.story_text,
+
+        email:
+          savedSettings.email ??
+          current.email,
+
+        address:
+          savedSettings.address ??
+          current.address,
+
+        instagram:
+          savedSettings.instagram ??
+          current.instagram,
+
+        facebook:
+          savedSettings.facebook ??
+          current.facebook,
+
+        tiktok:
+          savedSettings.tiktok ??
+          current.tiktok,
+
+        whatsapp:
+          savedSettings.whatsapp ??
+          current.whatsapp,
+      }));
+
+      setLoading(false);
     }
-  }
 
-  loadSettings();
-}, []);
+    loadWebsite();
 
-  const visibleProducts = useMemo(() => {
-    return products.filter(
-      (product) =>
-        product.visible !== false
-    );
-  }, [products]);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const newArrivals = useMemo(() => {
-    return visibleProducts.filter(
-      (product) =>
-        isNewArrival(product)
-    );
-  }, [visibleProducts]);
+  const visibleProducts =
+    useMemo(() => {
+      return products.filter(
+        (product) =>
+          product.active !== false &&
+          product.visible !== false
+      );
+    }, [products]);
 
-  const featured = useMemo(() => {
-    return visibleProducts.filter(
-      (product) =>
-        product.featured === true
-    );
-  }, [visibleProducts]);
+  const newArrivals =
+    useMemo(() => {
+      return visibleProducts.filter(
+        (product) =>
+          isNewArrival(product)
+      );
+    }, [visibleProducts]);
 
-  const total = useMemo(() => {
-    return cart.reduce(
-      (sum, item) => {
-        return (
-          sum +
-          getPrice(
-            item.product,
-            currency
-          ) *
-            item.qty
-        );
-      },
-      0
-    );
-  }, [cart, currency]);
+  const featured =
+    useMemo(() => {
+      return visibleProducts.filter(
+        (product) =>
+          isFeatured(product)
+      );
+    }, [visibleProducts]);
+
+  const total =
+    useMemo(() => {
+      return cart.reduce(
+        (sum, item) => {
+          return (
+            sum +
+            getPrice(
+              item.product,
+              currency
+            ) *
+              item.qty
+          );
+        },
+        0
+      );
+    }, [cart, currency]);
 
   function openProduct(product) {
     setSelected(product);
@@ -304,6 +362,20 @@ function App() {
   }
 
   function addToBag(product) {
+    if (
+      Number(product.stock || 0) <= 0
+    ) {
+      setMessage(
+        "This product is currently unavailable."
+      );
+
+      window.setTimeout(() => {
+        setMessage("");
+      }, 2000);
+
+      return;
+    }
+
     setCart((current) => {
       const existing =
         current.find(
@@ -396,10 +468,11 @@ function App() {
 
     const lines = cart.map(
       (item) => {
-        const price = getPrice(
-          item.product,
-          currency
-        );
+        const price =
+          getPrice(
+            item.product,
+            currency
+          );
 
         return `${
           item.product.name ||
@@ -587,7 +660,8 @@ function App() {
           <section
             className="hero"
             style={{
-              backgroundImage: `url("${hero}")`,
+              backgroundImage:
+                `url("${hero}")`,
             }}
           >
 
@@ -991,6 +1065,9 @@ function ProductCard({
     product.image ||
     "https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80";
 
+  const stock =
+    Number(product.stock || 0);
+
   return (
     <article className="product-card">
 
@@ -1010,7 +1087,6 @@ function ProductCard({
               "Product"
             }
           />
-
           {product.badge && (
             <span className="product-badge">
               {product.badge}
@@ -1045,11 +1121,14 @@ function ProductCard({
 
         <button
           className="add-button"
+          disabled={stock <= 0}
           onClick={() =>
             addToBag(product)
           }
         >
-          ADD TO BAG
+          {stock > 0
+            ? "ADD TO BAG"
+            : "OUT OF STOCK"}
         </button>
 
       </div>
@@ -1123,7 +1202,7 @@ function ProductDetails({
           </p>
 
           <h1>
-                      {product.name ||
+            {product.name ||
               "Unnamed Product"}
           </h1>
 
@@ -1145,29 +1224,44 @@ function ProductDetails({
 
           {sizes.length > 0 && (
             <div className="detail-meta">
-              <strong>Sizes</strong>
+
+              <strong>
+                Sizes
+              </strong>
+
               <p>
                 {sizes.join(" • ")}
               </p>
+
             </div>
           )}
 
           {colours.length > 0 && (
             <div className="detail-meta">
-              <strong>Colours</strong>
+
+              <strong>
+                Colours
+              </strong>
+
               <p>
                 {colours.join(" • ")}
               </p>
+
             </div>
           )}
 
           <div className="detail-meta">
-            <strong>Stock</strong>
+
+            <strong>
+              Stock
+            </strong>
+
             <p>
               {stock > 0
                 ? `${stock} available`
                 : "Currently unavailable"}
             </p>
+
           </div>
 
           <button
@@ -1188,8 +1282,7 @@ function ProductDetails({
 
     </section>
   );
-}
-
+            }
 function Cart({
   cart,
   currency,
@@ -1205,11 +1298,15 @@ function Cart({
       <div className="section-heading">
 
         <div>
+
           <p className="eyebrow">
             YOUR SELECTION
           </p>
 
-          <h1>Your Bag</h1>
+          <h1>
+            Your Bag
+          </h1>
+
         </div>
 
       </div>
@@ -1343,7 +1440,10 @@ function Cart({
           <div className="cart-summary">
 
             <div>
-              <span>Total</span>
+
+              <span>
+                Total
+              </span>
 
               <strong>
                 {money(
@@ -1351,6 +1451,7 @@ function Cart({
                   currency
                 )}
               </strong>
+
             </div>
 
             <button
@@ -1396,7 +1497,9 @@ function Footer({ settings }) {
 
         <div className="footer-column">
 
-          <h3>CONTACT</h3>
+          <h3>
+            CONTACT
+          </h3>
 
           {settings.address && (
             <p>
@@ -1420,7 +1523,9 @@ function Footer({ settings }) {
 
         <div className="footer-column">
 
-          <h3>FOLLOW US</h3>
+          <h3>
+            FOLLOW US
+          </h3>
 
           {settings.instagram && (
             <a
@@ -1476,3 +1581,4 @@ createRoot(
     <App />
   </React.StrictMode>
 );
+      
